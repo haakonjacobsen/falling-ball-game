@@ -2,51 +2,94 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 
+interface Ball {
+  x: number
+  y: number
+  radius: number
+  dx: number
+  dy: number
+}
+
+interface GameState {
+  speed: number
+}
+
 export default function FallingBallGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [score, setScore] = useState(0)
   const [gameOver, setGameOver] = useState(false)
-  const ballRef = useRef<{ dx: number }>({ dx: 0 })
+  const ballRef = useRef<Ball>({ x: 0, y: 30, radius: 15, dx: 0, dy: 2 })
+  const gameLoopRef = useRef<number>()
+  const gameStateRef = useRef<GameState>({ speed: 1 })
 
+  function onGameOver() {
+    if (window.GameChannel) {
+      window.GameChannel.postMessage('GAME_OVER')
+    }
+  }
+
+  function onScoreIncrease() {
+    if (window.GameChannel) {
+      window.GameChannel.postMessage('SCORE_INCREASE')
+    }
+  }
+
+  function resetGame() {
+    // Cancel any existing game loop
+    if (gameLoopRef.current) {
+      cancelAnimationFrame(gameLoopRef.current)
+      gameLoopRef.current = undefined
+    }
+
+    setGameOver(false)
+    setScore(0)
+    // Reset game speed
+    gameStateRef.current.speed = 1
+
+    if (canvasRef.current) {
+      const canvas = canvasRef.current
+      ballRef.current = {
+        x: canvas.width / 2,
+        y: 30,
+        radius: 15,
+        dx: 0,
+        dy: 2,
+      }
+      startGame()
+    }
+  }
+
+  // Define window functions once when component mounts
   useEffect(() => {
-    if (!canvasRef.current) return
-    const canvas = canvasRef.current
-
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-    }
-
-    resizeCanvas()
-    window.addEventListener('resize', resizeCanvas)
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const ball = {
-      x: canvas.width / 2,
-      y: 30,
-      radius: 15,
-      dx: 0,
-      dy: 2,
-    }
-
-    ballRef.current = ball
-
     window.startMovingLeft = () => {
-      ball.dx = -5
+      ballRef.current.dx = -5
     }
 
     window.startMovingRight = () => {
-      ball.dx = 5
+      ballRef.current.dx = 5
     }
 
     window.stopMoving = () => {
-      ball.dx = 0
+      ballRef.current.dx = 0
     }
 
+    // Clean up window functions on unmount
+    return () => {
+      delete window.startMovingLeft
+      delete window.startMovingRight
+      delete window.stopMoving
+    }
+  }, [])
+
+  function startGame() {
+    if (!canvasRef.current) return
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const ball = ballRef.current
     let holes: { x: number; width: number }[] = []
-    let gameSpeed = 1
+    const gameState = gameStateRef.current
 
     const holeWidth = Math.min(100, canvas.width / 4)
     function createHole() {
@@ -79,7 +122,7 @@ export default function FallingBallGame() {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      ball.y += ball.dy * gameSpeed
+      ball.y += ball.dy * gameState.speed
       ball.x += ball.dx
 
       if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) {
@@ -87,26 +130,27 @@ export default function FallingBallGame() {
         ball.x = Math.max(ball.radius, Math.min(canvas.width - ball.radius, ball.x))
       }
 
-      if (holes.length === 0) {
-        createHole()
+      // Check for collision with barriers
+      if (
+        ball.y + ball.radius > canvas.height - 10 &&
+        (ball.x - ball.radius < holes[0].x || ball.x + ball.radius > holes[0].x + holes[0].width)
+      ) {
+        setGameOver(true)
+        onGameOver()
+        if (gameLoopRef.current) {
+          cancelAnimationFrame(gameLoopRef.current)
+          gameLoopRef.current = undefined
+        }
+        return
       }
 
-      holes = holes.filter((hole) => {
-        if (
-          ball.y + ball.radius > canvas.height - 10 &&
-          (ball.x - ball.radius < hole.x || ball.x + ball.radius > hole.x + hole.width)
-        ) {
-          setGameOver(true)
-          return false
-        }
-        return true
-      })
-
+      // Ball passed through the hole successfully
       if (ball.y - ball.radius > canvas.height) {
         ball.y = 30
         setScore((prevScore) => {
+          onScoreIncrease()
           const newScore = prevScore + 1
-          gameSpeed = 1 + newScore * 0.1
+          gameState.speed = 1 + newScore * 0.1
           return newScore
         })
         createHole()
@@ -116,33 +160,66 @@ export default function FallingBallGame() {
       drawHoles()
 
       if (!gameOver) {
-        requestAnimationFrame(updateGame)
+        gameLoopRef.current = requestAnimationFrame(updateGame)
       }
     }
 
+    // Start the game loop
+    gameLoopRef.current = requestAnimationFrame(updateGame)
+
+    // Return cleanup function
+    return () => {
+      if (gameLoopRef.current) {
+        cancelAnimationFrame(gameLoopRef.current)
+        gameLoopRef.current = undefined
+      }
+    }
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+      // Reset ball position when canvas is resized
+      ballRef.current.x = canvas.width / 2
+    }
+
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'ArrowLeft') {
-        ball.dx = -5
+        ballRef.current.dx = -5
       } else if (e.key === 'ArrowRight') {
-        ball.dx = 5
+        ballRef.current.dx = 5
       }
     }
 
     function handleKeyUp(e: KeyboardEvent) {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        ball.dx = 0
+        ballRef.current.dx = 0
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
 
-    updateGame()
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-      window.removeEventListener('resize', resizeCanvas)
+    // Only start the game if it's not game over
+    if (!gameOver) {
+      const cleanup = startGame()
+      return () => {
+        cleanup?.()
+        window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('keyup', handleKeyUp)
+        window.removeEventListener('resize', resizeCanvas)
+        if (gameLoopRef.current) {
+          cancelAnimationFrame(gameLoopRef.current)
+          gameLoopRef.current = undefined
+        }
+      }
     }
   }, [gameOver])
 
@@ -158,7 +235,7 @@ export default function FallingBallGame() {
               <p className="text-xl">Your score: {score}</p>
               <button
                 className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                onClick={() => window.location.reload()}
+                onClick={resetGame}
               >
                 Play Again
               </button>
@@ -174,8 +251,9 @@ export default function FallingBallGame() {
 
 declare global {
   interface Window {
-    startMovingLeft: () => void
-    startMovingRight: () => void
-    stopMoving: () => void
+    startMovingLeft?: () => void
+    startMovingRight?: () => void
+    stopMoving?: () => void
+    GameChannel?: { postMessage: (message: string) => void }
   }
 }
