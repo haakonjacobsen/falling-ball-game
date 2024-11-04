@@ -6,6 +6,7 @@ export default function FallingBallGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [score, setScore] = useState(0)
   const [gameOver, setGameOver] = useState(false)
+  const ballRef = useRef<{ dx: number }>({ dx: 0 })
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -20,6 +21,22 @@ export default function FallingBallGame() {
       radius: 15,
       dx: 0,
       dy: 2,
+    }
+
+    // Store ball reference for external control
+    ballRef.current = ball
+
+    // Add global functions to control the ball
+    window.startMovingLeft = () => {
+      ball.dx = -5
+    }
+
+    window.startMovingRight = () => {
+      ball.dx = 5
+    }
+
+    window.stopMoving = () => {
+      ball.dx = 0
     }
 
     let holes: { x: number; width: number }[] = []
@@ -152,4 +169,12 @@ export default function FallingBallGame() {
       <p className="mt-2 text-gray-600">Use left and right arrow keys to move the ball</p>
     </div>
   )
+}
+
+declare global {
+  interface Window {
+    startMovingLeft: () => void
+    startMovingRight: () => void
+    stopMoving: () => void
+  }
 }
