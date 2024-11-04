@@ -12,6 +12,14 @@ export default function FallingBallGame() {
     if (!canvasRef.current) return
     const canvas = canvasRef.current
 
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
@@ -23,10 +31,8 @@ export default function FallingBallGame() {
       dy: 2,
     }
 
-    // Store ball reference for external control
     ballRef.current = ball
 
-    // Add global functions to control the ball
     window.startMovingLeft = () => {
       ball.dx = -5
     }
@@ -42,14 +48,13 @@ export default function FallingBallGame() {
     let holes: { x: number; width: number }[] = []
     let gameSpeed = 1
 
-    const holeWidth = 100; // Fixed hole width
+    const holeWidth = Math.min(100, canvas.width / 4)
     function createHole() {
-      const holeX = Math.random() * (canvas.width - holeWidth);
-      holes = [{ x: holeX, width: holeWidth }];
+      const holeX = Math.random() * (canvas.width - holeWidth)
+      holes = [{ x: holeX, width: holeWidth }]
     }
 
-    createHole(); // Create the initial hole
-
+    createHole()
 
     function drawBall() {
       if (!ctx) return
@@ -83,7 +88,7 @@ export default function FallingBallGame() {
       }
 
       if (holes.length === 0) {
-        createHole();
+        createHole()
       }
 
       holes = holes.filter((hole) => {
@@ -98,13 +103,13 @@ export default function FallingBallGame() {
       })
 
       if (ball.y - ball.radius > canvas.height) {
-        ball.y = 30;
+        ball.y = 30
         setScore((prevScore) => {
-          const newScore = prevScore + 1;
-          gameSpeed = 1 + newScore * 0.1;
-          return newScore;
-        });
-        createHole(); // Create a new hole after each successful fall
+          const newScore = prevScore + 1
+          gameSpeed = 1 + newScore * 0.1
+          return newScore
+        })
+        createHole()
       }
 
       drawBall()
@@ -137,19 +142,15 @@ export default function FallingBallGame() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('resize', resizeCanvas)
     }
   }, [gameOver])
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex flex-col items-center justify-center h-screen max-h-screen bg-gray-100 overflow-hidden">
       <h1 className="text-4xl font-bold mb-4">Falling Ball Game</h1>
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          width={400}
-          height={600}
-          className="border-2 border-gray-300 bg-white"
-        />
+      <div className="relative w-full h-full">
+        <canvas ref={canvasRef} className="border-2 border-gray-300 bg-white" />
         {gameOver && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
             <div className="text-white text-center">
